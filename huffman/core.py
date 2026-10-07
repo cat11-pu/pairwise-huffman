@@ -51,7 +51,9 @@ class _Heap:
     @staticmethod
     def _before(first, second):
         """True when first belongs in front of second."""
-        return first.weight < second.weight
+        if first.weight != second.weight:
+            return first.weight < second.weight
+        return first.symbol < second.symbol
 
     def push(self, node):
         """Put a node in the heap."""
@@ -106,6 +108,9 @@ def _lengths(weights):
     """
     if not weights:
         return {}
+    if len(weights) == 1:
+        symbol = next(iter(weights))
+        return {symbol: 1}
     heap = _Heap()
     for symbol, weight in weights.items():
         heap.push(Node(weight, symbol))
@@ -128,7 +133,7 @@ def canonical_codes(lengths):
     codes = {}
     code = 0
     previous = 0
-    for symbol in sorted(lengths, key=lambda item: lengths[item]):
+    for symbol in sorted(lengths, key=lambda item: (lengths[item], item)):
         length = lengths[symbol]
         code <<= (length - previous)
         codes[symbol] = (code, length)
@@ -149,7 +154,7 @@ def build_codes(weights, max_length=MAX_CODE_LENGTH):
         raise HuffmanError(
             "%d symbols do not fit in %d-bit codes" % (len(weights), max_length))
     lengths = _lengths(weights)
-    if lengths and max(lengths.values()) > MAX_CODE_LENGTH:
+    if lengths and max(lengths.values()) > max_length:
         raise HuffmanError(
             "the table needs codes longer than %d bits" % max_length)
     return canonical_codes(lengths)
@@ -205,10 +210,9 @@ def encode(data, codes=None):
         while pending >= 8:
             pending -= 8
             payload.append((accumulator >> pending) & 0xFF)
-    spare = 8 - pending
-    fill = (1 << spare) - 1
-    payload.append(((accumulator << spare) & 0xFF) | fill)
-    total += spare
+    if pending:
+        spare = 8 - pending
+        payload.append((accumulator << spare) & 0xFF)
     return Encoded(bytes(payload), total, codes)
 
 
@@ -257,7 +261,7 @@ def decode(payload, codes, bit_length):
     root = _decode_tree(codes)
     out = bytearray()
     node = root
-    for index in range(len(payload) * 8):
+    for index in range(bit_length):
         bit = (payload[index >> 3] >> (7 - (index & 7))) & 1
         node = node.right if bit else node.left
         if node is None:
